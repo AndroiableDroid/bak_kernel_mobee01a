@@ -21,7 +21,9 @@ if [ $prop -lt 27 ]; then
 dtb=/tmp/anykernel/dt_n/dt.img;
 project=/tmp/anykernel/project_n/*;
 else
+if [[ ! -f "/system/vendor/etc/fstab.qcom" ]]; then
 project=/tmp/anykernel/project_o/*;
+fi
 dtb=/tmp/anykernel/dt_o/dt.img;
 fi
 
@@ -44,7 +46,11 @@ ramdisk() {
   cd $ramdisk;
   gzip -dc ../boot.img-ramdisk.gz | cpio -i;
   rm -rf ../boot.img-ramdisk.gz;
+  if [[ ! -f "/system/vendor/etc/fstab.qcom" ]]; then
   cp $project $ramdisk;
+  else
+  cp /tmp/anykernel/project_o/*.rc $ramdisk;
+  fi
   find . | cpio -o -H newc | gzip > ../boot.img-ramdisk.gz
   ui_print "Ramdisk Fixing Done";
 
