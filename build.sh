@@ -68,7 +68,7 @@ export USE_CCACHE=1
 BUILD_DIR=$KERNEL_DIR/build
 VERSION="X10"
 DATE=$(date -u +%Y%m%d-%H%M)
-ZIP_NAME="ODonor's"-$DEVICE-$VERSION-$DATE
+ZIP_NAME="ODonor's-Treble"-$DEVICE-$VERSION-$DATE
 
 compile_kernel ()
 {
