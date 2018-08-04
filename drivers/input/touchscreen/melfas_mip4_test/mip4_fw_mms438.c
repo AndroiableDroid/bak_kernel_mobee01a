@@ -267,7 +267,6 @@ int mip_flash_fw(struct mip_ts_info *info, const u8 *fw_data, size_t fw_size, bo
 	struct mip_fw_img **img;
 	struct i2c_client *client = info->client;
 	int i;
-	int retires = 3;
 	int nRet;
 	int nStartAddr;
 	int nWriteLength;
@@ -305,22 +304,21 @@ int mip_flash_fw(struct mip_ts_info *info, const u8 *fw_data, size_t fw_size, bo
 	}
 	
 	//Reboot chip
-	mip_reboot(info);
+	//mip_reboot(info);
 	
 	//Check chip firmware version
-	while (retires--) {
+	/*while (retires--) {
 		if (!mip_get_fw_version_u16(info, ver_chip)){
 			break;
 		}
 		else {
 			mip_reboot(info);
 		}
-	}
-	if (retires < 0) {
+	}*/
+	nRet = mip_get_fw_version_u16(info, ver_chip);
+	if (nRet < 0) {
 		dev_err(&client->dev, "%s [ERROR] cannot read chip firmware version\n", __func__);
-		
-		memset(ver_chip, 0xFFFF, sizeof(ver_chip));		
-		dev_info(&client->dev, "%s - Chip firmware version is set to [0xFFFF]\n", __func__);
+		goto ERROR;
 	} 
 	else {
 		dev_info(&client->dev, "%s - Chip firmware version [0x%04X 0x%04X 0x%04X 0x%04X]\n", __func__, ver_chip[0], ver_chip[1], ver_chip[2], ver_chip[3]);

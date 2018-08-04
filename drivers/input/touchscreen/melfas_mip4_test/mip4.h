@@ -37,6 +37,8 @@
 #include <linux/wakelock.h>
 #include <asm/uaccess.h>
 #include <linux/regulator/consumer.h>
+#include <linux/fb.h>
+
 
 #ifdef CONFIG_HAS_EARLYSUSPEND
 #include <linux/earlysuspend.h>
@@ -47,6 +49,7 @@
 
 //Include register map
 #include "mip4_reg.h"
+
 //Chip info
 #ifdef CONFIG_TOUCHSCREEN_MELFAS_MMS438
 #define CHIP_MMS438
@@ -94,7 +97,7 @@
 #define MIP_USE_CMD			0	// 0 (defualt) or 1 : Optional
 
 //Module features
-#define MIP_USE_WAKEUP_GESTURE	0	// 0 (defualt) or 1
+#define MIP_USE_WAKEUP_GESTURE	1	// 0 (defualt) or 1
 
 //Input value
 #define MAX_FINGER_NUM 			10
@@ -112,8 +115,8 @@
 
 //Firmware update
 #define FW_PATH_INTERNAL			"melfas/melfas_mip4.bin"	//path of firmware included in the kernel image (/firmware)
-#define FW_PATH_EXTERNAL			"/sdcard/melfas_mip4.mfsb"	//path of firmware in external storage
-#define MIP_USE_AUTO_FW_UPDATE	0	// 0 or 1
+#define FW_PATH_EXTERNAL			"/sdcard/melfas_mip4.bin"	//path of firmware in external storage
+#define MIP_USE_AUTO_FW_UPDATE	1	// 0 or 1
 #define MIP_FW_MAX_SECT_NUM		4
 #define MIP_FW_UPDATE_DEBUG		0	// 0 (defualt) or 1
 #define MIP_FW_UPDATE_SECTION  	1	// 0 (defualt) or 1
@@ -154,12 +157,13 @@ struct mip_ts_info {
 	struct mutex lock_test;
 	struct mutex lock_cmd;
 	struct mutex lock_dev;
-#if defined(CONFIG_FB)
-	struct notifier_block fb_notif;
-#elif defined(CONFIG_HAS_EARLYSUSPEND)
+
+#ifdef CONFIG_HAS_EARLYSUSPEND
 	struct early_suspend early_suspend;
 #endif
-	
+
+	struct notifier_block fb_notify;
+	int fb_state;
 	int irq;
 	bool enabled;
 	int power;
@@ -224,7 +228,7 @@ struct mip_ts_info {
 };
 
 /**
-* Firmware binary header 
+* Firmware binary header info
 */
 struct mip_bin_hdr {
 	char tag[8];
@@ -323,8 +327,6 @@ int mip_fw_update_from_kernel(struct mip_ts_info *info);
 int mip_fw_update_from_storage(struct mip_ts_info *info, char *path, bool force);
 int mip_suspend(struct device *dev);
 int mip_resume(struct device *dev);
-int fb_notifier_callback(struct notifier_block *self,
-				unsigned long event, void *data);
 #ifdef CONFIG_HAS_EARLYSUSPEND
 void mip_early_suspend(struct early_suspend *h);
 void mip_late_resume(struct early_suspend *h);

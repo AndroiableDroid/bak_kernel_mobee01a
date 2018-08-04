@@ -67,7 +67,7 @@ int mip_regulator_control(struct mip_ts_info *info, int enable)
 
 	dev_dbg(&info->client->dev, "%s [DONE]\n", __func__);
 	return 0;
-
+	
 /*
 ERROR:
 	dev_err(&info->client->dev, "%s [ERROR]\n", __func__);
@@ -80,17 +80,33 @@ ERROR:
 */
 int mip_power_off(struct mip_ts_info *info)
 {
-	dev_dbg(&info->client->dev, "%s [START]\n", __func__);
+	//int ret = 0;
+
+	dev_err(&info->client->dev, "%s [START]\n", __func__);
+		
+	//////////////////////////
+	// MODIFY REQUIRED
+	//
 
 	//Control regulator
 	//mip_regulator_control(info, 0);
 
 	//Control power switch
 	gpio_direction_output(info->pdata->vdd_supply, 0);
-	mdelay(2);
+	msleep(1);
 	gpio_direction_output(info->pdata->gpio_vdd_en, 0);
+
+	//
+	//////////////////////////
+
+	msleep(10);
+	
 	dev_dbg(&info->client->dev, "%s [DONE]\n", __func__);
 	return 0;
+
+//ERROR:
+	dev_err(&info->client->dev, "%s [ERROR]\n", __func__);	
+	return -1;
 }
 
 /**
@@ -98,17 +114,33 @@ int mip_power_off(struct mip_ts_info *info)
 */
 int mip_power_on(struct mip_ts_info *info)
 {
+	//int ret = 0;
+
 	dev_dbg(&info->client->dev, "%s [START]\n", __func__);
+	
+	//////////////////////////
+	// MODIFY REQUIRED
+	//
+	
 	//Control regulator
 	//mip_regulator_control(info, 1);
 
 	//Control power switch
 	gpio_direction_output(info->pdata->vdd_supply, 1);
-	mdelay(2);
+	msleep(1);
 	gpio_direction_output(info->pdata->gpio_vdd_en, 1);
-	mdelay(20);
+
+	//
+	//////////////////////////
+	
+	msleep(150);
+	
 	dev_dbg(&info->client->dev, "%s [DONE]\n", __func__);
 	return 0;
+
+//ERROR:
+	dev_err(&info->client->dev, "%s [ERROR]\n", __func__);	
+	return -1;
 }
 
 /**
@@ -427,13 +459,15 @@ int mip_parse_devicetree(struct device *dev, struct mip_ts_info *info)
 	*/
 	
 	//Config GPIO
+
+	/*
 	ret = gpio_request(info->pdata->gpio_intr, "irq-gpio");
 	if (ret < 0) {
 		dev_err(dev, "%s [ERROR] gpio_request : irq-gpio\n", __func__);
 		goto ERROR;
 	}	
 	gpio_direction_input(info->pdata->gpio_intr);
-
+	*/
 	info->pdata->melfas_pinctrl = devm_pinctrl_get(dev);
 	if (IS_ERR_OR_NULL(info->pdata->melfas_pinctrl)) {
 		dev_err(dev, "%s:melfas pinctrl get error!\n", __func__);
@@ -485,12 +519,13 @@ int mip_parse_devicetree(struct device *dev, struct mip_ts_info *info)
 		info->pdata->gpio_vdd_en = ret;
 	}
 
+
 	ret = gpio_request(info->pdata->gpio_vdd_en, "reset-gpio");
 	if (ret < 0) {
 		dev_err(dev, "%s [ERROR] gpio_request : reset-gpio\n", __func__);
 		goto ERROR;
 	}
-	
+
 	ret = of_get_named_gpio(np, MIP_DEVICE_NAME",vdd-supply", 0);
 	if (!gpio_is_valid(ret)) {
 		dev_err(dev, "%s [ERROR] of_get_named_gpio : irq-gpio\n", __func__);
