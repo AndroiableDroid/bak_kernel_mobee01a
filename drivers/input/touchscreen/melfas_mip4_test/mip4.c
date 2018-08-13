@@ -13,44 +13,11 @@
 //#define DEBUG 1
 #include "mip4.h"
 
-
-#if defined(CONFIG_FB)
-#include <linux/notifier.h>
-#include <linux/fb.h>
-#elif defined(CONFIG_HAS_EARLYSUSPEND)
-#include <linux/earlysuspend.h>
-#endif
-
-#define TS_INFO_MAX 512
-
-static struct class *touchscreen_class;
-static struct mip_ts_info *class_ts_info;
-
 #if MIP_USE_WAKEUP_GESTURE
 struct wake_lock mip_wake_lock;
 #endif
 
-static ssize_t class_melfs_ts_info_show(struct class *class,
-		struct class_attribute *attr, char *buf)
-{
-	return snprintf(buf, TS_INFO_MAX, "%s\n", "MELFAS_MMS449");
-}
-
-static CLASS_ATTR(ts_info, S_IRUSR, class_melfs_ts_info_show, NULL);
-
-static ssize_t class_melfs_ts_version_show(struct class *class,
-		struct class_attribute *attr, char *buf)
-{
-	u8 data[256] = {0};
-	u8 rbuf[16] = {0};
-
-	mip_get_fw_version(class_ts_info, rbuf);
-	sprintf(data, "%02X.%02X_%02X.%02X_%02X.%02X_%02X"".%02X",
-			rbuf[0], rbuf[1], rbuf[2], rbuf[3], rbuf[4], rbuf[5], rbuf[6], rbuf[7]);
-	return snprintf(buf, TS_INFO_MAX, "%s\n", data);
-}
-
-static CLASS_ATTR(ts_version, S_IRUSR, class_melfs_ts_version_show, NULL);
+struct mip_ts_info *info_ts;
 
 /**
 * Reboot chip
@@ -67,7 +34,7 @@ void mip_reboot(struct mip_ts_info *info)
 	
 	mip_power_off(info);
 	mip_power_on(info);
-	mdelay(10);
+
 	i2c_unlock_adapter(adapter);
 
 	dev_dbg(&info->client->dev, "%s [DONE]\n", __func__);
@@ -113,7 +80,7 @@ int mip_i2c_read(struct mip_ts_info *info, char *write_buf, unsigned int write_l
 	goto ERROR_REBOOT;
 	
 ERROR_REBOOT:
-	mip_reboot(info);
+	//mip_reboot(info);
 	return 1;
 	
 DONE:
@@ -280,7 +247,7 @@ EXIT:
 */
 int mip_disable(struct mip_ts_info *info)
 {
-	dev_dbg(&info->client->dev, "%s [START]\n", __func__);
+	dev_err(&info->client->dev, "%s [START]\n", __func__);
 	
 	if (!info->enabled){
 		dev_err(&info->client->dev, "%s [ERROR] device already disabled\n", __func__);
@@ -305,6 +272,7 @@ int mip_disable(struct mip_ts_info *info)
 #else
 	mutex_lock(&info->lock);
 
+	dev_err(&info->client->dev, "%s [mip_power_off]\n", __func__);
 	disable_irq(info->client->irq);
 	mip_power_off(info);
 
@@ -431,7 +399,7 @@ ERROR:
 	//memset(ver_buf, 0xFF, sizeof(ver_buf));
 	
 	dev_err(&info->client->dev, "%s [ERROR]\n", __func__);
-	return 1;	
+	return -1;
 }
 
 /**
@@ -1035,16 +1003,83 @@ static int mip_init_config(struct mip_ts_info *info)
 	//return 1;
 }
 
+static int fb_notifier_callback(struct notifier_block *self, unsigned long event, void *data)
+{
+	struct fb_event *evdata = data;
+	int *blank;
+	struct mip_ts_info *mip_info = container_of(self, struct mip_ts_info, fb_notify);
+	if (evdata && evdata->data && mip_info && mip_info->client) {
+		if (event == FB_EVENT_BLANK) {
+			blank = evdata->data;
+			if (*blank == FB_BLANK_UNBLANK) {
+				mip_info->fb_state = FB_BLANK_UNBLANK;
+				mip_resume(&mip_info->client->dev);
+			}
+			else if (*blank == FB_BLANK_POWERDOWN)
+				mip_info->fb_state = FB_BLANK_POWERDOWN;
+				mip_suspend(&mip_info->client->dev);
+			}
+	}
+	return 0;
+}
+
 /**
 * Initialize driver
 */
+
+static struct class *touchscreen_class;
+
+static ssize_t touchscreen_info_show(struct class *class,
+		struct class_attribute *attr, char *buf)
+{
+		return snprintf(buf, 15, "MELFAS_MMS449\n");
+}
+
+static ssize_t touchscreen_version_show(struct class *class,
+		struct class_attribute *attr, char *buf)
+{
+		u8 rbuf[16];
+		if(mip_get_fw_version(info_ts, rbuf)){
+			pr_err("%s [ERROR] mip_get_fw_version\n", __func__);
+			return sprintf(buf, "F/W Version : ERROR\n");
+		}
+		return sprintf(buf, "F/W Version : %02X.%02X_%02X.%02X_%02X.%02X_%02X.%02X\n", rbuf[0], rbuf[1], rbuf[2], rbuf[3], rbuf[4], rbuf[5], rbuf[6], rbuf[7]);
+}
+
+static CLASS_ATTR(touchscreen_info, S_IRUSR, touchscreen_info_show, NULL);
+static CLASS_ATTR(touchscreen_version, S_IRUSR, touchscreen_version_show, NULL);
+
+
+static int create_touchscreen_info(struct device *dev)
+{
+	int rc = 0;
+
+	touchscreen_class = class_create(THIS_MODULE, "touchscreen");
+	if (IS_ERR_OR_NULL(touchscreen_class))
+		return PTR_ERR(touchscreen_class);
+
+	rc = class_create_file(touchscreen_class, &class_attr_touchscreen_info);
+	if (rc < 0) {
+		pr_err("%s: class_crate_touchscreen_info_file error!\n", __func__);
+		class_destroy(touchscreen_class);
+		return rc;
+	}
+	rc = class_create_file(touchscreen_class, &class_attr_touchscreen_version);
+	if (rc < 0) {
+		pr_err("%s: class_crate_touchscreen_version_file error!\n", __func__);
+		class_destroy(touchscreen_class);
+		return rc;
+	}
+	return rc;
+}
+
 static int mip_probe(struct i2c_client *client, const struct i2c_device_id *id)
 {
 	struct i2c_adapter *adapter = to_i2c_adapter(client->dev.parent);
 	struct mip_ts_info *info;
 	struct input_dev *input_dev;
 	int ret = 0;	
-	
+
 	dev_dbg(&client->dev, "%s [START]\n", __func__);
 	if (!i2c_check_functionality(adapter, I2C_FUNC_I2C)){
 		dev_err(&client->dev, "%s [ERROR] i2c_check_functionality\n", __func__);		
@@ -1054,6 +1089,7 @@ static int mip_probe(struct i2c_client *client, const struct i2c_device_id *id)
 
 	//Init info data
 	info = kzalloc(sizeof(struct mip_ts_info), GFP_KERNEL);
+	info_ts = info;
 	input_dev = input_allocate_device();
 	if (!info || !input_dev) {
 		dev_err(&client->dev, "%s [ERROR]\n", __func__);
@@ -1061,7 +1097,6 @@ static int mip_probe(struct i2c_client *client, const struct i2c_device_id *id)
 		goto ERROR;
 	}
 
-	class_ts_info = info;
 	info->client = client;
 	info->input_dev = input_dev;
 	info->irq = -1;
@@ -1108,6 +1143,11 @@ static int mip_probe(struct i2c_client *client, const struct i2c_device_id *id)
 	info->input_dev->open = mip_input_open;
 	info->input_dev->close = mip_input_close;
 #endif
+	info->fb_notify.notifier_call = fb_notifier_callback;
+	ret = fb_register_client(&info->fb_notify);
+	if (ret)
+		pr_err("%s: fb call chain register error!\n", __func__);
+
      //set input event buffer size
 	input_set_events_per_packet(input_dev, 200); 
 	//Create device
@@ -1169,20 +1209,17 @@ static int mip_probe(struct i2c_client *client, const struct i2c_device_id *id)
 	wake_lock_init(&mip_wake_lock, WAKE_LOCK_SUSPEND, "mip_wake_lock");
 #endif
 
-#if defined(CONFIG_FB)
-	info->fb_notif.notifier_call = fb_notifier_callback;
-	ret = fb_register_client(&info->fb_notif);
-	if (ret)
-		dev_err(&client->dev, "Unable to register fb_notifier: %d\n",
-			ret);
-#elif defined(CONFIG_HAS_EARLYSUSPEND)
+#ifdef CONFIG_HAS_EARLYSUSPEND
+	//Config early suspend
 	info->early_suspend.level = EARLY_SUSPEND_LEVEL_BLANK_SCREEN +1;
 	info->early_suspend.suspend = mip_early_suspend;
-	info->early_suspend.resume = mip_late_resume;       
-	register_early_suspend(&info->early_suspend);       
+	info->early_suspend.resume = mip_late_resume;
+	
+	register_early_suspend(&info->early_suspend);
+	
 	dev_dbg(&client->dev, "%s - register_early_suspend\n", __func__);
-
 #endif
+
 	//Enable device
 	mip_enable(info);
 
@@ -1230,32 +1267,17 @@ static int mip_probe(struct i2c_client *client, const struct i2c_device_id *id)
 		goto ERROR;
 	}
 
-	touchscreen_class = class_create(THIS_MODULE, "touchscreen");
-	if (IS_ERR(touchscreen_class)) {
-		pr_err("%s: create class error!\n", __func__);
-		goto END;
+	ret = create_touchscreen_info(&client->dev);
+	if(ret < 0){
+		dev_err(&client->dev, "%s [ERROR] class_crate_file error!\n", __func__);
+		class_destroy(touchscreen_class);
+		goto ERROR;
 	}
 
-	ret = class_create_file(touchscreen_class, &class_attr_ts_info);
-	if (ret < 0) {
-		pr_err("%s class_create_file failed!\n", __func__);
-	}
-
-	ret = class_create_file(touchscreen_class, &class_attr_ts_version);
-	if (ret < 0) {
-		pr_err("%s class_create_file failed!\n", __func__);
-	}
-
-	dev_dbg(&client->dev, "%s [DONE]\n", __func__);
+	dev_dbg(&client->dev, "%s [DONE]\n", __func__);	
 	dev_info(&client->dev, "MELFAS " CHIP_NAME " Touchscreen is initialized successfully.\n");	
 	return 0;
-
-END:
-	dev_dbg(&client->dev, "%s [DONE]\n", __func__);
-	dev_info(&client->dev, "MELFAS " CHIP_NAME " Touchscreen is initialized "
-			"successfully.\n");
-	return 0;
-
+	
 ERROR:
 	dev_dbg(&client->dev, "%s [ERROR]\n", __func__);
 	dev_err(&client->dev, "MELFAS " CHIP_NAME " Touchscreen initialization failed.\n");	
@@ -1289,22 +1311,20 @@ static int mip_remove(struct i2c_client *client)
 	device_destroy(info->class, info->mip_dev);
 	class_destroy(info->class);
 #endif
-#if defined(CONFIG_FB)
-	if (fb_unregister_client(&info->fb_notif))
-		dev_err(&client->dev,
-		"Error occurred while unregistering fb_notifier.\n");
-#elif defined(CONFIG_HAS_EARLYSUSPEND)
+
+#ifdef CONFIG_HAS_EARLYSUSPEND
 	unregister_early_suspend(&info->early_suspend);
 #endif
 
 	input_unregister_device(info->input_dev);
+
 	kfree(info->fw_name);
 	kfree(info);
 
 	return 0;
 }
 
-#if defined(CONFIG_FB) || defined(CONFIG_HAS_EARLYSUSPEND)
+#if defined(CONFIG_PM) || defined(CONFIG_HAS_EARLYSUSPEND) || 1
 /**
 * Device suspend event handler
 */
@@ -1312,8 +1332,14 @@ int mip_suspend(struct device *dev)
 {
 	struct i2c_client *client = to_i2c_client(dev);
 	struct mip_ts_info *info = i2c_get_clientdata(client);
-	dev_dbg(&client->dev, "%s [START]\n", __func__);	
-	mip_disable(info);	
+	
+	dev_dbg(&client->dev, "%s [START]\n", __func__);
+	
+	//mip_disable(info);
+	if (info->fb_state == FB_BLANK_POWERDOWN) {
+		mip_disable(info);
+	}
+	
 	dev_dbg(&client->dev, "%s [DONE]\n", __func__);
 
 	return 0;
@@ -1330,34 +1356,19 @@ int mip_resume(struct device *dev)
 	int ret = 0;
 
 	dev_dbg(&client->dev, "%s [START]\n", __func__);
-	mip_clear_input(info);
-	mip_enable(info);
+
+	//mip_enable(info);
+	if (info->fb_state == FB_BLANK_UNBLANK) {
+		mip_enable(info);
+	}
 
 	dev_dbg(&client->dev, "%s [DONE]\n", __func__);
 
 	return ret;
 }
-#if defined(CONFIG_FB)
-int fb_notifier_callback(struct notifier_block *self,
-				 unsigned long event, void *data)
-{
-	struct fb_event *evdata = data;
-	int *blank;
-	struct mip_ts_info *mip_info =
-		container_of(self, struct mip_ts_info, fb_notif);
+#endif
 
-	if (evdata && evdata->data && event == FB_EARLY_EVENT_BLANK &&
-			mip_info && mip_info->client) {
-		blank = evdata->data;
-		if (*blank == FB_BLANK_UNBLANK)
-			mip_resume(&mip_info->client->dev);
-		else if (*blank == FB_BLANK_POWERDOWN)
-			mip_suspend(&mip_info->client->dev);
-	}
-
-	return 0; 
-}
-#elif defined(CONFIG_HAS_EARLYSUSPEND)
+#ifdef CONFIG_HAS_EARLYSUSPEND
 /**
 * Early suspend handler
 */
@@ -1378,23 +1389,18 @@ void mip_late_resume(struct early_suspend *h)
 	mip_resume(&info->client->dev);
 }
 #endif
-#endif
-#if (!defined(CONFIG_FB) && !defined(CONFIG_HAS_EARLYSUSPEND))
+
+#if defined(CONFIG_PM) && !defined(CONFIG_HAS_EARLYSUSPEND)
 /**
 * PM info
 */
 const struct dev_pm_ops mip_pm_ops = {
 #if 0
- 	SET_SYSTEM_SLEEP_PM_OPS(mip_suspend, mip_resume)
+	SET_SYSTEM_SLEEP_PM_OPS(mip_suspend, mip_resume)
 #else
-
 	.suspend	= mip_suspend,
 	.resume = mip_resume,
 #endif
-};
-
-#else 
-const struct dev_pm_ops mip_pm_ops = {
 };
 #endif
 

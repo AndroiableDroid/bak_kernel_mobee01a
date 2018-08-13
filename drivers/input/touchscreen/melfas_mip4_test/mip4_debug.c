@@ -813,7 +813,7 @@ static ssize_t mip_sys_fw_version(struct device *dev, struct device_attribute *a
 	}
 	
 	dev_info(&info->client->dev, "%s - F/W Version : %02X.%02X_%02X.%02X_%02X.%02X_%02X.%02X\n", __func__, rbuf[0], rbuf[1], rbuf[2], rbuf[3], rbuf[4], rbuf[5], rbuf[6], rbuf[7]);	
-	sprintf(data, "melfas_%s,fw_ver:%02X.%02X_%02X.%02X_%02X.%02X_%02X.%02X\n",MIP_DEVICE_NAME, rbuf[0], rbuf[1], rbuf[2], rbuf[3], rbuf[4], rbuf[5], rbuf[6], rbuf[7]);
+	sprintf(data, "F/W Version : %02X.%02X_%02X.%02X_%02X.%02X_%02X.%02X\n", rbuf[0], rbuf[1], rbuf[2], rbuf[3], rbuf[4], rbuf[5], rbuf[6], rbuf[7]);	
 
 ERROR:	
 	strcat(info->print_buf, data);
@@ -1221,9 +1221,9 @@ static DEVICE_ATTR(mode_cover_window, 0666, mip_sys_mode_show, mip_sys_mode_stor
 static DEVICE_ATTR(mode_palm_rejection, 0666, mip_sys_mode_show, mip_sys_mode_store);
 static DEVICE_ATTR(image_intensity, 0666, mip_sys_image, NULL);
 static DEVICE_ATTR(image_rawdata, 0666, mip_sys_image, NULL);
-static DEVICE_ATTR(test_cm_delta, 0600, mip_sys_test, NULL);
+static DEVICE_ATTR(test_cm_delta, 0666, mip_sys_test, NULL);
 static DEVICE_ATTR(test_cm_jitter, 0666, mip_sys_test, NULL);
-static DEVICE_ATTR(test_short, 0600, mip_sys_test, NULL);
+static DEVICE_ATTR(test_short, 0666, mip_sys_test, NULL);
 static DEVICE_ATTR(wakeup_gesture, 0666, mip_sys_wakeup_gesture, NULL);
 
 /**
